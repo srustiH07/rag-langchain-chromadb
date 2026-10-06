@@ -1,22 +1,13 @@
+import os
 import streamlit as st
-from pathlib import Path
+from dotenv import load_dotenv
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
 
-# --------------------------------------------------
-# Project paths
-# --------------------------------------------------
-
-BASE_DIR = Path(__file__).resolve().parent
-PDF_PATH = BASE_DIR / "data" / "rag_demo_document.pdf"
-CHROMA_DIR = BASE_DIR / "chroma_db"
-
-# --------------------------------------------------
-# Page
-# --------------------------------------------------
+load_dotenv()
 
 st.set_page_config(
     page_title="Cynaris RAG Chatbot",
@@ -27,14 +18,12 @@ st.set_page_config(
 st.title("🤖 RAG Pipeline with LangChain & ChromaDB")
 st.caption("Cynaris AI/ML Internship Project")
 
-# --------------------------------------------------
-# Load and index documents
-# --------------------------------------------------
+PDF_PATH = "data/rag_demo_document.pdf"
+CHROMA_PATH = "chroma_db"
 
 @st.cache_resource
 def create_vectorstore():
-
-    loader = PyPDFLoader(str(PDF_PATH))
+    loader = PyPDFLoader(PDF_PATH)
     documents = loader.load()
 
     splitter = RecursiveCharacterTextSplitter(
@@ -51,104 +40,73 @@ def create_vectorstore():
     vectorstore = Chroma.from_documents(
         documents=chunks,
         embedding=embeddings,
-        persist_directory=str(CHROMA_DIR),
-        collection_name="rag_documents"
+        collection_name="rag_documents",
+        persist_directory=CHROMA_PATH
     )
 
     return vectorstore
 
 
-# --------------------------------------------------
-# Start
-# --------------------------------------------------
-
-if not PDF_PATH.exists():
-    st.error("PDF document not found in the data folder.")
-    st.stop()
-
-with st.spinner("Loading document and building knowledge base..."):
-    vectorstore = create_vectorstore()
+vectorstore = create_vectorstore()
 
 st.success("Knowledge base ready!")
 
-# --------------------------------------------------
-# Question
-# --------------------------------------------------
+st.markdown("### Ask a question")
 
 question = st.text_input(
-    "Ask a question about the document:",
-    placeholder="Example: What is RAG?"
+    "Enter your question:",
+    placeholder="Example: What is Retrieval-Augmented Generation?"
 )
 
 if question:
-
-    with st.spinner("Searching the knowledge base..."):
-
-        results = vectorstore.similarity_search(
-            question,
-            k=4
-        )
-
-    st.subheader("Answer")
+    results = vectorstore.similarity_search(question, k=4)
 
     if results:
+        st.markdown("### Answer")
 
-        # Use retrieved text as a grounded answer
+        # Retrieval-based answer used when Groq API key is unavailable
         answer = results[0].page_content
 
         st.write(answer)
 
-        st.subheader("📚 Sources")
+        st.markdown("### 📚 Sources")
 
-        seen = set()
+        sources = set()
 
         for doc in results:
-
-            source = Path(
-                doc.metadata.get("source", "Unknown")
-            ).name
-
+            source = doc.metadata.get("source", "Unknown source")
             page = doc.metadata.get("page", 0) + 1
+            sources.add(f"{source} — Page {page}")
 
-            source_name = f"{source} — Page {page}"
+        for source in sources:
+            st.write(f"- {source}")
 
-            if source_name not in seen:
-
-                st.write(f"• {source_name}")
-
-                seen.add(source_name)
-
-        st.subheader("🔎 Retrieved Context")
-
-        for i, doc in enumerate(results, 1):
-
-            with st.expander(f"Retrieved Chunk {i}"):
-
+        with st.expander("🔎 Retrieved Context"):
+            for i, doc in enumerate(results, 1):
+                st.markdown(f"**Chunk {i}**")
                 st.write(doc.page_content)
+                st.divider()
 
-else:
+st.sidebar.title("Project Components")
 
-    st.info(
-        "Enter a question above to search the document."
-    )
+st.sidebar.markdown("""
+✅ PDF Document Loader
 
-# --------------------------------------------------
-# Project information
-# --------------------------------------------------
+✅ Text Chunking
 
-with st.sidebar:
+✅ Sentence Transformer Embeddings
 
-    st.header("Project Components")
+✅ ChromaDB Vector Store
 
-    st.write("✅ PDF Document Loader")
-    st.write("✅ Text Chunking")
-    st.write("✅ Sentence Transformers")
-    st.write("✅ ChromaDB")
-    st.write("✅ Semantic Retrieval")
-    st.write("✅ Source Citations")
-    st.write("⏳ Groq LLM integration")
+✅ Semantic Retrieval
 
-    st.divider()
+✅ Source Citations
 
-    st.write("Cynaris Internship")
-    st.write("RAG Pipeline Project")
+⏳ Groq LLM Integration
+
+---
+
+**Cynaris AI/ML Internship**
+
+RAG Pipeline Project
+""")
